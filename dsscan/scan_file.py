@@ -548,13 +548,103 @@ def handler_for(ext, family):
     return "binary"
 
 
+def sniff(path):
+    """Guess the extension from content, for stores that keep files under IDs with no name (the platform's S3)."""
+    head = read_head(path, 4096)
+    h = head.lstrip()
+    if head[:4] == b"%PDF" or b"%PDF-" in head[:1024]:
+        return ".pdf"
+    if head[:2] == b"AC" and head[2:6].isdigit():
+        return ".dwg"
+    if h.startswith(b"ISO-10303-21"):
+        return ".ifc" if re.search(rb"FILE_SCHEMA\s*\(\s*\(\s*'IFC", read_head(path, 20000)) else ".step"
+    if re.match(rb"0\s*SECTION", h) or h.startswith(b"999"):
+        return ".dxf"
+    if head.startswith(b"3D Geometry File Format"):
+        return ".3dm"
+    if b"S\x00k\x00e\x00t\x00c\x00h\x00U\x00p\x00" in head[:200]:
+        return ".skp"
+    if head[:6] == b"7z\xbc\xaf\x27\x1c":
+        return ".7z"
+    if head[:4] == b"Rar!":
+        return ".rar"
+    if head[:2] == b"\x1f\x8b":
+        return ".tgz"
+    if head[257:262] == b"ustar":
+        return ".tar"
+    if head[:8] == b"\x89PNG\r\n\x1a\n":
+        return ".png"
+    if head[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    if head[:4] in (b"II*\x00", b"MM\x00*"):
+        return ".tif"
+    if head[:5] == b"#UGC:":
+        return ".prt"
+    if head[:4] == b"PK\x03\x04":
+        try:
+            names = zipfile.ZipFile(path).namelist()
+        except Exception:  # noqa: BLE001
+            return ".zip"
+        if "[Content_Types].xml" in names:
+            for prefix, ext in (("word/", ".docx"), ("xl/", ".xlsx"), ("ppt/", ".pptx")):
+                if any(n.startswith(prefix) for n in names):
+                    return ext
+        if any(n.lower().endswith(".ifc") for n in names) and len(names) <= 3:
+            return ".ifczip"
+        return ".zip"
+    if head[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        import olefile
+        try:
+            streams = {"/".join(x).lower() for x in olefile.OleFileIO(path).listdir()}
+        except Exception:  # noqa: BLE001
+            return ".ole"
+        joined = " ".join(streams)
+        if "basicfileinfo" in joined:
+            return ".rvt"
+        if "worddocument" in joined:
+            return ".doc"
+        if "workbook" in joined or "book" in streams:
+            return ".xls"
+        if "rsestorage" in joined:
+            return ".ipt"
+        if "isolidworksinformation" in joined or "swdoccontentmgr" in joined:
+            if "sheetpreviews/sheetnames" in streams or "images/sheet_0" in streams:
+                return ".slddrw"
+            return ".sldprt" if "contents/config-0-partition" in streams else ".sldasm"
+        return ".ole"
+    data = read_head(path, 1 << 20)
+    if b"SldWorks" in data or b"S\x00l\x00d\x00W\x00o\x00r\x00k\x00s" in data or b"SOLIDWORKS" in data:
+        return ".sldprt"
+    if head[:5].lower() == b"solid" and b"facet" in data[:4096]:
+        return ".stl"
+    try:
+        sample = head.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    if len(re.findall(r"(?m)^\s*N?\d*\s*G0?[0-3]\b", sample)) >= 5:
+        return ".nc"
+    return ".txt" if sample.strip() else None
+
+
 def scan_file(path, rel, partial=False, size=None):
     """Return one row for the file at `path` (local), reported under the name `rel`."""
     name = os.path.basename(rel)
     ext = ext_of(name)
     size = os.path.getsize(path) if size is None else size
+    sniffed = None
+    if ext not in KINDS and size:
+        try:
+            sniffed = sniff(path)
+        except Exception:  # noqa: BLE001
+            sniffed = None
+        if sniffed:
+            ext = sniffed
     kind, family = KINDS.get(ext, ("other", "other"))
+    if ext == ".ole":
+        kind, family = "other", "other"
     row = {"path": rel, "ext": ext or "(none)", "size": size, "kind": kind, "family": family, "read": "header"}
+    if sniffed:
+        row["sniffed"] = True
     if name.lower() in JUNK or name.startswith("._"):
         row.update(kind="junk", family="junk", read="skipped")
         return row
@@ -583,9 +673,9 @@ def scan_file(path, rel, partial=False, size=None):
     return {k: v for k, v in row.items() if v not in (None, [], {}, "")}
 
 
-def expand_archive(path, dest):
+def expand_archive(path, dest, ext=None):
     """Unpack an archive into `dest`; return the list of (member_name, local_path). Unsupported -> []."""
-    low = path.lower()
+    low = (path + (ext or "")).lower()
     out = []
     try:
         if low.endswith(".zip"):
@@ -645,7 +735,7 @@ def scan_path(path, rel, workdir, depth=0):
         return
     import tempfile
     with tempfile.TemporaryDirectory(dir=workdir) as dest:
-        members, err = expand_archive(path, dest)
+        members, err = expand_archive(path, dest, row["ext"])
         row["members"] = len(members)
         if err:
             row["read"], row["error"] = "failed", err

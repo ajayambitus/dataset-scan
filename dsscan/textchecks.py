@@ -14,9 +14,9 @@ RIGHTS = [
                      r"n[ãa]o (?:pode|deve) ser (?:reproduzid|copiad|divulgad)|prohibida su reproducci|"
                      r"not for (?:resale|redistribution|ai|machine learning|training)|no ai training|not for ai"),
     ("confidential", r"confidential|proprietary|internal use only|confidencial|vertraulich|riservato"),
-    ("watermark", r"watermark|marca d'?[aá]gua|sample only|for review only|evaluation copy|educational version|"
+    ("watermark", r"(?<![A-Za-z])watermark(?!manager)|marca d'?[aá]gua|sample only|for review only|evaluation copy|educational version|"
                   r"student version|produced by an autodesk student|for preview|draft - not for construction"),
-    ("demo_synthetic", r"\bdemo\b|synthetic|dummy data|fake data|placeholder|lorem ipsum"),
+    ("demo_synthetic", r"\bdemo\b|synthetic|dummy data|fake data|(?<![A-Za-z])placeholder\b|lorem ipsum"),
     ("license", r"licen[cs]ed to|license agreement|registered to|serial number"),
 ]
 RIGHTS_RX = [(name, re.compile(rx, re.I)) for name, rx in RIGHTS]
@@ -35,7 +35,7 @@ PII = [
 PII_RX = [(name, re.compile(rx)) for name, rx in PII]
 
 # Software vendors' own boilerplate (embedded in every file their tool writes) is not a rights mark on the data.
-VENDOR_RX = re.compile(r"mcneel|autodesk|dassault|solidworks corp|siemens|bentley|trimble|sketchup|adobe|microsoft|"
+VENDOR_RX = re.compile(r"mcneel|autodesk|parametric technology|hewlett-packard|icc_profile|srgb|iec ?61966|dassault|solidworks corp|siemens|bentley|trimble|sketchup|adobe|microsoft|"
                        r"gemvision|stuller|parasolid|spatial corp|open design alliance|graebert|ptc inc|"
                        r"hexagon|esri|apple|google|mozilla|unicode|pdf-?lib|itext|ghostscript", re.I)
 TEXT_ONLY_PII = {"phone", "india_pan", "india_aadhaar", "us_ssn"}  # too noisy in strings pulled from binaries
