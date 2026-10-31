@@ -92,6 +92,8 @@ def check(text, binary=False):
         out["rights"] = rights
         out["rights_snippets"] = snippets[:6]
     pii = {name: len(rx.findall(text)) for name, rx in PII_RX if not (binary and name in TEXT_ONLY_PII)}
+    if "us_ssn" in pii and not re.search(r"social security|\bssn\b", text, re.I):
+        del pii["us_ssn"]  # part numbers share the ###-##-#### shape
     if "email" in pii:
         pii["email"] = sum(1 for e in PII_RX[0][1].findall(text) if not VENDOR_RX.search(e))
     pii = {k: v for k, v in pii.items() if v}

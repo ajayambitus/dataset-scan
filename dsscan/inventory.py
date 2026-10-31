@@ -56,6 +56,10 @@ def project_of_rows(rows):
 
 def build(rows, name="dataset"):
     rows = [r for r in rows if r.get("kind") != "junk"]
+    # A store that keeps both an archive and its unpacked copy (the platform does) would count every member twice.
+    standalone = {r["sha256"] for r in rows if r.get("sha256") and "!" not in r["path"]}
+    expanded_copies = sum(1 for r in rows if "!" in r["path"] and r.get("sha256") in standalone)
+    rows = [r for r in rows if not ("!" in r["path"] and r.get("sha256") in standalone)]
     junk = 0
     projects, depth = project_of_rows(rows) if rows else ([], 1)
     for r, p in zip(rows, projects):
@@ -256,7 +260,7 @@ def build(rows, name="dataset"):
         "rights": {"files_by_mark": dict(rights_files), "top_snippets": [s for s, _ in snippets.most_common(15)]},
         "pii": {"files_by_kind": dict(pii_files)},
         "languages": dict(langs.most_common()),
-        "quality": {"failed": len(failed), "partial_reads": len(partial), "duplicate_files": dup_files,
+        "quality": {"archive_members_also_stored_unpacked": expanded_copies, "failed": len(failed), "partial_reads": len(partial), "duplicate_files": dup_files,
                     "duplicate_gb": round(dup_bytes / 1e9, 3), "read_depth": dict(Counter(r.get("read") for r in files)),
                     "failed_files": [{"path": r["path"], "error": r.get("error")} for r in failed[:50]]},
         "task_fit": tasks,
