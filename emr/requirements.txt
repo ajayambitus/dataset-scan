@@ -3,3 +3,4 @@ pymupdf==1.24.14
 olefile==0.47
 py7zr==0.22.0
 pillow==10.4.0
+boto3==1.35.36
