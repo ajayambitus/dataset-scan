@@ -153,11 +153,12 @@ def main():
     if a.names:
         nb, nk = split_s3(a.names)
         names = json.loads(boto3.client("s3").get_object(Bucket=nb, Key=nk)["Body"].read())
+    named = sum(1 for o in objs if o[0].split("/")[-1] in names.get("files", {}))
     listed = time.time() - t0
     n = a.slices or max(8, min(len(objs), sc.defaultParallelism * 4))
     batches = balance(objs, n)
     print(f"dsscan: {len(objs)} objects, {sum(o[1] for o in objs) / 1e9:.2f} GB, {len(batches)} tasks, "
-          f"listed in {listed:.1f} s; skipped {len(skipped)}; names for {sum(1 for o in objs if o[0].split("/")[-1] in names.get("files", {}))}", flush=True)
+          f"listed in {listed:.1f} s; skipped {len(skipped)}; names for {named}", flush=True)
 
     rows_rdd = sc.parallelize(batches, len(batches)).flatMap(
         lambda batch: scan_batch(batch, bucket, prefix, a.max_bytes, names))
@@ -169,7 +170,7 @@ def main():
     rep = inventory.build(rows, a.name or prefix.rstrip("/").split("/")[-1] or bucket)
     rep["scan"] = {"objects": len(objs), "rows": len(rows), "gb": round(sum(o[1] for o in objs) / 1e9, 3),
                    "list_seconds": round(listed, 1), "total_seconds": round(scanned, 1), "tasks": len(batches),
-                   "input": a.input, "skipped_objects": len(skipped), "named_objects": sum(1 for o in objs if o[0].split("/")[-1] in names.get("files", {}))}
+                   "input": a.input, "skipped_objects": len(skipped), "named_objects": named}
     s3 = boto3.client("s3")
     put = dict(Bucket=out_bucket, ServerSideEncryption="AES256")
     s3.put_object(Key=out_prefix + "rows.jsonl", Body=("\n".join(lines) + "\n").encode(), **put)
