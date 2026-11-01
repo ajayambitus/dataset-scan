@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source emr.env
 REGION=us-east-1
+if [ $# -lt 1 ]; then echo "usage: AWS_PROFILE=admin bash run.sh s3://ambitus-assets/collections/<env>/<package>/ [name] [names-file]"; exit 1; fi
 IN=$1; NAME=${2:-scan}; NAMES=${3:-}
 RUN=$(date -u +%Y%m%dT%H%M%SZ)-$NAME
 OUT=s3://ambitus-assets/review-runs/_emr/scans/$RUN/
